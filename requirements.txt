@@ -1,0 +1,7 @@
+requests          # call the API
+pandas            # shape data
+pyarrow           # Parquet support
+SQLAlchemy        # database toolkit
+pyodbc            # SQL Server driver
+python-dotenv     # load config from .env
+tenacity          # retry logic, done right
