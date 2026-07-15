@@ -45,16 +45,16 @@ def fetch_date_range(start: str, end: str) -> list[dict]:
     end_date = date.fromisoformat(end)
 
     while current < end_date:
-        window_start = current.strftime("%Y%m%d")
-        next_day = current + timedelta(days=1)
-        window_end = next_day.strftime("%Y%m%d")
+        window_str = current.strftime("%Y%m%d")
 
-        # TODO (you): call fetch_all_for_window for this single-day window,
-        # extend all_results with what comes back, log the day + count,
-        # then advance `current` to the next day
+        day_results = fetch_all_for_window(window_str, window_str)
+        all_results.extend(day_results)
+        print(f"Collected {len(day_results)} reports for {current}")
+
+        current += timedelta(days=1)
 
     return all_results
 
 if __name__ == "__main__":
-    results = fetch_all_for_window("20240101", "20240102")
-    print("Collected:", len(results))
+    results = fetch_date_range("2024-01-01", "2024-01-04")
+    print("Total collected:", len(results))
