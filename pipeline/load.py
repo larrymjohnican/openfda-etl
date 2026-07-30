@@ -88,12 +88,3 @@ def get_last_loaded_date(engine) -> str:
 if __name__ == "__main__":
     engine = get_db_engine()
     print("Last loaded date:", get_last_loaded_date(engine))
-
-    # --- full ingest/load loop, re-enable once dedup logic (Piece 2) is in place ---
-    from pipeline.ingest import fetch_date_range
-    from pipeline.validate import validate_reports, extract_drugs, extract_reactions
-    reports = fetch_date_range("2024-01-01", "2024-01-02")
-    clean = validate_reports(reports)
-    for report in clean:
-        load_report(engine, report, extract_drugs(report), extract_reactions(report))
-    print(f"Loaded {len(clean)} reports")
