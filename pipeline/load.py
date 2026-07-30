@@ -82,8 +82,8 @@ def get_last_loaded_date(engine) -> str:
         result = conn.execute(text("SELECT MAX(receivedate) FROM Adverse_Events")).scalar()
 
     if result is None:
-        return "2024-01-01"  # default start date if table is empty
-    return result.strftime("%Y-%m-%d")  # return as "YYYY-MM-DD" string
+        return os.environ.get("FETCH_START_DATE", "2026-03-10")
+    return result.strftime("%Y-%m-%d")
     
 if __name__ == "__main__":
     engine = get_db_engine()

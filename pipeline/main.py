@@ -13,6 +13,7 @@ def run_pipeline():
     fetch_start_date = date.fromisoformat(last_loaded_date) + timedelta(days=1)
     fetch_end_date = date.today()
 
+
     reports = fetch_date_range(fetch_start_date.isoformat(), fetch_end_date.isoformat())
     clean = validate_reports(reports)
 
@@ -21,6 +22,12 @@ def run_pipeline():
 
     print(f"Loaded {len(clean)} reports")
 
+    for i, report in enumerate(clean, start=1):
+        load_report(engine, report, extract_drugs(report), extract_reactions(report))
+        if i % 1000 == 0:
+            print(f"Loaded {i}/{len(clean)} reports...")
 
+    print(f"Loaded {len(clean)} reports")
+    
 if __name__ == "__main__":
     run_pipeline()
