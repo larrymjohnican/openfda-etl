@@ -1,0 +1,3 @@
+pyodbc          # SQL Server driver
+python-dotenv   # pipeline modules call load_dotenv() on import
+tenacity        # HTTP retry logic in pipeline/ingest.py

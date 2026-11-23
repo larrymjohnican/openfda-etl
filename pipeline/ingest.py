@@ -44,8 +44,10 @@ def fetch_reports(start_date: str, end_date: str, skip: int = 0, limit: int = 10
         "search": f"receivedate:[{start_date} TO {end_date}]",
         "limit": limit,
         "skip": skip,
-        "api_key": os.environ["OPENFDA_API_KEY"],
     }
+    api_key = os.environ.get("OPENFDA_API_KEY")
+    if api_key:
+        params["api_key"] = api_key
     resp = requests.get(url, params=params, timeout=30)
 
     if resp.status_code == 404:
@@ -55,11 +57,19 @@ def fetch_reports(start_date: str, end_date: str, skip: int = 0, limit: int = 10
     return resp.json()
 
 
+def page_limit() -> int:
+    """Largest page openFDA will serve: 1,000 with an API key, 999 without.
+
+    Without a key, limit=1000 is rejected with 403 API_KEY_MISSING.
+    """
+    return 1000 if os.environ.get("OPENFDA_API_KEY") else 999
+
+
 def fetch_all_for_window(start_date: str, end_date: str) -> list[dict]:
-    """Fetch every report in a date window, paging past the 1,000-record limit."""
+    """Fetch every report in a date window, paging past the per-call limit."""
     all_results = []
     skip = 0
-    limit = 1000
+    limit = page_limit()
 
     while True:
         data = fetch_reports(start_date, end_date, skip=skip, limit=limit)

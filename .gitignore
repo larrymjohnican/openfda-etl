@@ -5,3 +5,5 @@ __pycache__/
 *.log
 .ruff_cache/
 .pytest_cache/
+airflow/logs/
+airflow/data/
