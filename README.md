@@ -159,6 +159,64 @@ The tests need no database or API key. CI runs both on every push and pull reque
 
 ---
 
+## Orchestration with Airflow
+
+The same pipeline, scheduled by Apache Airflow 3.3 running in Docker. Everything lives in `airflow/`, a separate stack from the top-level compose file. It has its own SQL Server warehouse.
+
+```
+openfda_daily, one run per day of data
+
+  ingest ──────────────> validate ─────────────> load
+  API -> raw/<date>      raw -> clean/<date>      clean -> SQL Server, one transaction
+           .json.gz              .json.gz
+```
+
+### Run it
+
+```bash
+cd airflow
+cp .env.example .env      # fill in: id -u, generated secrets, passwords (comments in the file)
+docker compose up -d --build
+```
+
+The UI is at `http://<host>:8081`. Log in as `AIRFLOW_ADMIN_USER` with `AIRFLOW_ADMIN_PASSWORD` from `airflow/.env`. Run CLI commands through the scheduler container:
+
+```bash
+AF="docker compose exec airflow-scheduler airflow"
+$AF dags unpause openfda_daily       # nothing runs while a DAG is paused, backfills included
+
+# Backfill: one run per date, both ends inclusive, one at a time
+$AF backfill create --dag-id openfda_daily --from-date 2026-09-24 --to-date 2026-09-28 --max-active-runs 1
+
+# Rerun a failed date's load, reusing its staged file (no API call)
+$AF tasks clear openfda_daily -t load --only-failed -s 2026-09-01 -e 2026-10-01 -y
+```
+
+### What each part demonstrates
+
+**DAG.** A DAG (directed acyclic graph) is a set of tasks plus the order they run in: `ingest >> validate >> load`. "Acyclic" means the arrows never loop back. The file `airflow/dags/openfda_daily.py` only *describes* the work. The scheduler decides when to run it and runs each task, and the UI shows every run's state.
+
+**Data interval.** Each run is responsible for exactly one slice of time. Here a slice is one UTC day, `[D 00:00, D+1 00:00)`, and the run loads the reports openFDA *received* on day D. A scheduled run starts only once its day is over: the run for 2026-11-22 fires at 2026-11-23 00:00. That is why its run ID reads `scheduled__2026-11-23...` even though it processed 11-22. Run IDs are named for when the run fires. The schedule is `CronDataIntervalTimetable("@daily")` on purpose: in Airflow 3 a bare `"@daily"` gives a zero-length interval at the moment the run fires, so the midnight run fetched the day that had only just started. That happened on the first try here.
+
+**Backfill.** Loading past dates means creating one run per date, each with its own data interval. Because a run only ever touches its own date, a backfill is the same code as a normal daily run, just repeated over history. `catchup=False` stops Airflow from creating a run for every day since `start_date` the moment the DAG is unpaused, so history is loaded only when you ask for it. Pass `--max-active-runs 1`: backfills ignore the DAG's own `max_active_runs`.
+
+**Retries, at two levels.** Inside `ingest`, each HTTP call retries timeouts and 5xx errors with exponential backoff (tenacity). Those are blips measured in seconds. Airflow retries the whole *task* (`retries=2`, waits of about 1 and then 2 minutes) for failures that outlast that, such as the database being down. If all attempts fail, the task and the run are marked failed and wait for a person.
+
+**Reruns without duplicates.** `load` deletes and reinserts every report for the date inside **one transaction**, so a date lands whole or not at all. That makes any rerun safe. Rerunning a successful date replaces its rows, and a load that dies midway leaves nothing behind to clean up.
+
+**Staging between tasks.** Tasks pass files, not data. A day is up to ~7,000 reports, far too big for XCom (Airflow's task-to-task messages, stored in its metadata database), so only the file path travels through XCom. This is also what makes rerunning just `load` cheap: the validated file is still on disk. Files are written to a temp name and renamed, so a crash never leaves a half-written file for the next task. The DAG holds one date in memory at a time, never a list of every day.
+
+### What was shown (2026-11-23, on the Beelink)
+
+| Demo | Result |
+|---|---|
+| Backfill 2026-09-24 → 09-28 | 5 runs, rows per date match the API exactly: 4,627 / 4,534 / 1,041 / 1,150 / 4,872 |
+| Same backfill again over loaded dates | Counts unchanged, 0 duplicate IDs |
+| 2026-09-29: SQL Server stopped mid-load (1,552 rows written, uncommitted) | `load` failed, retried twice (about 1¾ and 2¾ minutes later), then marked failed. After restart, 09-29 had **0 rows**: the transaction rolled back |
+| Cleared only the failed `load`, SQL Server back up | Attempt 4 loaded 4,615 rows from the staged file (= API total), `ingest` not re-run, 0 duplicates, 0 orphan child rows |
+
+---
+
 ## Project structure
 
 ```
@@ -167,7 +225,14 @@ The tests need no database or API key. CI runs both on every push and pull reque
 │   ├── ingest.py           # API calls, pagination, retry logic
 │   ├── validate.py         # data quality checks, nested JSON flattening
 │   ├── load.py             # database connection, transactional loads
-│   └── main.py             # orchestration entry point
+│   ├── stages.py           # one-date ingest/validate/load stages, staged to files (used by Airflow)
+│   └── main.py             # orchestration entry point (no Airflow)
+├── airflow/
+│   ├── dags/openfda_daily.py   # the DAG
+│   ├── docker-compose.yml      # Airflow 3.3 + Postgres + SQL Server warehouse
+│   ├── Dockerfile              # Airflow image + SQL Server ODBC driver
+│   └── .env.example            # copy to .env (gitignored)
+├── tests/                  # pytest, no database or API needed
 ├── sql/
 │   └── schema.sql          # idempotent DDL — creates database, tables, indexes
 ├── Dockerfile              # pipeline image (Python 3.12 + msodbcsql18)
@@ -191,6 +256,8 @@ The tests need no database or API key. CI runs both on every push and pull reque
 
 openFDA's FAERS adverse-event data does not appear to be indexed continuously. Testing across a wide date range found a hard cutoff: dense, real daily volume through the end of Q1 2026 (March 31), then a flat wall of zero-result days for every date tested afterward — not a gradually shrinking gap, which is what a rolling indexing lag would look like. That pattern is consistent with a **quarterly publish cycle** rather than a fixed lag, though this project hasn't confirmed that against FDA's own documentation. Practically: expect recently-elapsed quarters to return nothing until openFDA's next data refresh, and pick backfill/demo date ranges from a quarter you've confirmed has data rather than assuming "N weeks ago" is safe.
 
+As of November 2026, openFDA is indexed through 2026-09-30 (end of Q3), which fits the quarterly cycle. It also means scheduled daily runs load 0 reports until the next refresh. Backfills are how real data gets loaded.
+
 Daily volume within an indexed period runs roughly 500–6,000 reports, with visible dips on weekends.
 
 The 404-vs-empty-result handling in `fetch_reports` (see Design Decisions above) is what lets the pipeline walk through a long stretch of unindexed days without erroring — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for how that was diagnosed.
@@ -201,5 +268,5 @@ The 404-vs-empty-result handling in `fetch_reports` (see Design Decisions above)
 
 - **Batch inserts** — the current load is row-by-row transactional, which is correct but slow at volume (~70k reports takes tens of minutes). Batching would trade some transaction granularity for throughput.
 - **Code decoding** — a dimension table mapping FDA numeric codes (`patientsex`, `serious`, `reactionoutcome`) to human-readable labels.
-- **Orchestration** — the high-water-mark pattern maps directly onto Azure Data Factory watermarks or an Airflow DAG.
+- **Orchestration** — done with Airflow (see above). The high-water-mark pattern in `main.py` also maps onto Azure Data Factory watermarks.
 - **Parquet staging** — landing raw responses to Parquet before loading, for replayability without re-hitting the API.
