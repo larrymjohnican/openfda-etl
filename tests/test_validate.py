@@ -11,7 +11,7 @@ def report(report_id="10001", receivedate="20260311", **extra):
 
 def test_valid_report_passes():
     r = report(serious="1")
-    assert validate_reports([r]) == [r]
+    assert validate_reports([r]) == []  # DELIBERATELY BROKEN: CI block demo
 
 
 @pytest.mark.parametrize("bad_id", [None, ""])
