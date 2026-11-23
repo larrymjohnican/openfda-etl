@@ -84,7 +84,9 @@ Instead, each report is loaded by deleting its existing rows (children first, th
 
 ### High-water-mark resumption
 
-On startup the pipeline queries `MAX(receivedate)` from `Adverse_Events` and begins fetching from the following day. On an empty database it falls back to a configured start date. No manual bookkeeping, no state file — the warehouse itself is the source of truth for what's been loaded.
+On startup the pipeline queries `MAX(receivedate)` from `Adverse_Events` and begins fetching from that same day, not the day after. If a previous run died partway through loading a day, that day is only half loaded; starting from the day after would skip the rest of it forever. Re-fetching the watermark day is safe because loads are idempotent (below), so it costs a few extra API calls and closes the gap. On an empty database it falls back to a configured start date. No manual bookkeeping, no state file — the warehouse itself is the source of truth for what's been loaded.
+
+Each day is fetched, validated and loaded before the next one is fetched, so a crash loses at most the day in flight.
 
 ### Retry classification
 

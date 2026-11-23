@@ -10,19 +10,31 @@ def run_pipeline():
     last_loaded_date = get_last_loaded_date(engine)
     print("Last loaded date:", last_loaded_date)
 
-    fetch_start_date = date.fromisoformat(last_loaded_date) + timedelta(days=1)
-    fetch_end_date = date.today()
+    # Restart AT the watermark day, not the day after. If the last run died
+    # partway through that day, it is only half loaded. load_report() deletes
+    # and reinserts each report, so fetching the whole day again is safe and
+    # fills the gap instead of skipping it.
+    current = date.fromisoformat(last_loaded_date)
+    fetch_end_date = date.today()  # exclusive: today's reports are still arriving
+
+    # Fetch, validate and load one day at a time, so a crash costs at most
+    # the day in flight rather than everything fetched so far.
+    total_loaded = 0
+    while current < fetch_end_date:
+        next_day = current + timedelta(days=1)
+        reports = fetch_date_range(current.isoformat(), next_day.isoformat())
+        clean = validate_reports(reports)
+
+        for report in clean:
+            load_report(engine, report, extract_drugs(report), extract_reactions(report))
+            total_loaded += 1
+            if total_loaded % 1000 == 0:
+                print(f"Loaded {total_loaded} reports so far...")
+
+        current = next_day
+
+    print(f"Loaded {total_loaded} reports")
 
 
-    reports = fetch_date_range(fetch_start_date.isoformat(), fetch_end_date.isoformat())
-    clean = validate_reports(reports)
-
-    for i, report in enumerate(clean, start=1):
-        load_report(engine, report, extract_drugs(report), extract_reactions(report))
-        if i % 1000 == 0:
-            print(f"Loaded {i}/{len(clean)} reports...")
-
-    print(f"Loaded {len(clean)} reports")
-    
 if __name__ == "__main__":
     run_pipeline()
