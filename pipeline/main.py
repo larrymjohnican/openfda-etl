@@ -17,11 +17,6 @@ def run_pipeline():
     reports = fetch_date_range(fetch_start_date.isoformat(), fetch_end_date.isoformat())
     clean = validate_reports(reports)
 
-    for report in clean:
-        load_report(engine, report, extract_drugs(report), extract_reactions(report))
-
-    print(f"Loaded {len(clean)} reports")
-
     for i, report in enumerate(clean, start=1):
         load_report(engine, report, extract_drugs(report), extract_reactions(report))
         if i % 1000 == 0:
