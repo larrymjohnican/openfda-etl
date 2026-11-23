@@ -1,5 +1,7 @@
 # openFDA → SQL Server Data Pipeline
 
+[![CI](https://github.com/larrymjohnican/openfda-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/larrymjohnican/openfda-etl/actions/workflows/ci.yml)
+
 An incremental ETL pipeline that ingests FDA adverse drug event reports from the public [openFDA API](https://open.fda.gov/apis/), validates and flattens deeply nested JSON, and loads it into a normalized SQL Server schema — running end to end in Docker.
 
 Built to be **idempotent**: the pipeline can be re-run any number of times without duplicating data, resuming automatically from the last date it successfully loaded.
@@ -144,6 +146,16 @@ python -m pipeline.ingest     # fetch only
 python -m pipeline.validate   # fetch + validate + sample extraction
 python -m pipeline.load       # database connection smoke test
 ```
+
+### Tests and lint
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+python -m pytest
+```
+
+The tests need no database or API key. CI runs both on every push and pull request.
 
 ---
 
