@@ -1,11 +1,16 @@
-import os
-import json
 import logging
+import os
+from datetime import date, timedelta
+
 import requests
 from dotenv import load_dotenv
-from datetime import date, timedelta
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
-
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 load_dotenv()
 
@@ -21,9 +26,7 @@ def is_retryable(exception: BaseException) -> bool:
         if exception.response is None:
             return False
         status_code = exception.response.status_code
-        if 500 <= status_code < 600:
-            return True
-        return False
+        return 500 <= status_code < 600
 
     return False
 

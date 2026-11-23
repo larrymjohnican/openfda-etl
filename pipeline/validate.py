@@ -1,5 +1,7 @@
 import logging
+
 from pipeline.ingest import fetch_date_range
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 def extract_drugs(report: dict) -> list[dict]:

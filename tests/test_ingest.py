@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
-import pipeline.ingest as ingest
+from pipeline import ingest
 
 
 @pytest.fixture

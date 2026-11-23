@@ -1,7 +1,8 @@
 from datetime import date, timedelta
+
 from pipeline.ingest import fetch_date_range
-from pipeline.validate import validate_reports, extract_drugs, extract_reactions
 from pipeline.load import get_db_engine, get_last_loaded_date, load_report
+from pipeline.validate import extract_drugs, extract_reactions, validate_reports
 
 
 def run_pipeline():
