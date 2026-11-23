@@ -1,7 +1,7 @@
 import os
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from datetime import date
 
 load_dotenv()
 

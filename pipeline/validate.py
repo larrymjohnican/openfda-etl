@@ -1,5 +1,8 @@
 import logging
+from datetime import datetime
+
 from pipeline.ingest import fetch_date_range
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 def extract_drugs(report: dict) -> list[dict]:
@@ -34,6 +37,21 @@ def extract_reactions(report: dict) -> list[dict]:
 
     return rows
 
+def is_yyyymmdd(value) -> bool:
+    """True only for an 8-digit string that is a real calendar date, e.g. 20260311.
+
+    Checking the length alone let values like 20261340 through, and they then
+    failed at the SQL DATE insert and took the whole load down with them.
+    """
+    if not isinstance(value, str) or len(value) != 8 or not (value.isascii() and value.isdigit()):
+        return False
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return False
+    return True
+
+
 def validate_reports(reports: list[dict]) -> list[dict]:
     """Validate a list of reports and return only those that are valid."""
     log = logging.getLogger(__name__)
@@ -52,7 +70,7 @@ def validate_reports(reports: list[dict]) -> list[dict]:
             log.warning("Dropped duplicate safetyreportid: %s", report_id)
             continue
 
-        if not received or len(received) != 8:
+        if not is_yyyymmdd(received):
             log.warning("Dropped report %s with bad receivedate: %r", report_id, received)
             continue
 
